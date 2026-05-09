@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.png
+.env
+data/.checked.json
+cron.log
+*.log
+__pycache__/
+.env
+data/flagged.json
+data/ranking.json
+data/.cookie_state.json
+data/.reported.json
+data/report_tracking.json
+data/avatars.json
+data/.checked.json
