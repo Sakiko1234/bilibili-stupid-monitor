@@ -762,8 +762,11 @@ async def auto_report_comments(new_flagged_comments):
     reported = load_reported()
     count = 0
     max_per_run = 5
-    report_interval = 90  # 每次举报间隔秒数（基础值，实际会加随机扰动）
-    report_url = "https://api.bilibili.com/x/v2/reply/report"
+    report_interval = 120  # 每次举报间隔秒数（基础值，实际会加随机扰动）
+    # 3个API域名，风控可能独立不互通
+    API_DOMAINS = ["api.bilibili.com", "api.biliapi.net", "api.biliapi.com"]
+    api_domain_idx = 0
+    report_path = "/x/v2/reply/report"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": f"https://www.bilibili.com/video/{BVID}",
@@ -786,15 +789,17 @@ async def auto_report_comments(new_flagged_comments):
             continue
         try:
             rc = c.get("report_content") or ""
+            content_text = rc if len(rc) >= 2 else "引战拉踩攻击米家其他游戏"
+
             data = {
                 "oid": int(AID),
-                "type": 1,  # VIDEO
+                "type": 1,
                 "rpid": rpid,
-                "reason": 4,  # 引战
-                "content": rc if len(rc) >= 2 else "引战拉踩攻击米家其他游戏",
+                "reason": 4,
+                "content": content_text,
                 "csrf": jct,
             }
-            r = requests.post(report_url, data=data, cookies=cookies, headers=headers, timeout=10)
+            r = requests.post(f"https://{API_DOMAINS[api_domain_idx]}{report_path}", data=data, cookies=cookies, headers=headers, timeout=10)
             result = r.json()
             code = result.get("code", -1)
             if code == 0:
@@ -816,13 +821,60 @@ async def auto_report_comments(new_flagged_comments):
             elif code == 12008:
                 reported.add(rpid)
                 print(f"  [report] already reported rpid={rpid}")
+            elif code == 12022:
+                reported.add(rpid)
+                print(f"  [report] already deleted rpid={rpid}")
             else:
                 msg = result.get("message", "unknown")
                 print(f"  [report] FAIL rpid={rpid} code={code} msg={msg}")
                 if code == -101:
-                    print("  [report] not logged in, stop")
-                    break
+                    print("  [report] not logged in, skip rpid")
+                    sessdata = _rotate_sessdata()
+                    jct = _rotate_jct()
+                    cookies = {"SESSDATA": sessdata}
+                    continue
                 if code in (12019, -352):
+                    # 先尝试切换API域名（3个域名风控可能独立）
+                    domain_ok = False
+                    for d_idx in range(len(API_DOMAINS)):
+                        if d_idx == api_domain_idx:
+                            continue
+                        await asyncio.sleep(3 + random.randint(1, 5))
+                        alt_url = f"https://{API_DOMAINS[d_idx]}{report_path}"
+                        r = requests.post(alt_url, data=data, cookies=cookies, headers=headers, timeout=10)
+                        result = r.json()
+                        code = result.get("code", -1)
+                        if code == 0:
+                            api_domain_idx = d_idx
+                            domain_ok = True
+                            print(f"  [report] domain switch OK to {API_DOMAINS[d_idx]}")
+                            break
+                        elif code not in (12019, -352):
+                            print(f"  [report] alt domain {API_DOMAINS[d_idx]} code={code}")
+                            break
+                        else:
+                            print(f"  [report] alt domain {API_DOMAINS[d_idx]} also -352")
+                    if domain_ok:
+                        reported.add(rpid)
+                        count += 1
+                        print(f"  [report] OK #{count} rpid={rpid} user={c.get('user','?')} (alt domain)")
+                        tracking = load_report_tracking()
+                        tracking[str(rpid)] = {
+                            "user": c.get("user", "?"),
+                            "content": c.get("content", "")[:100],
+                            "reason": c.get("report_content", c.get("ai_reason", "?"))[:60],
+                            "oid": AID,
+                            "reported_at": datetime.now(CST).isoformat(),
+                            "checked_at": None,
+                            "result": "pending"
+                        }
+                        save_report_tracking(tracking)
+                        await asyncio.sleep(report_interval + random.randint(5, 20))
+                        sessdata = _rotate_sessdata()
+                        jct = _rotate_jct()
+                        cookies = {"SESSDATA": sessdata}
+                        continue
+
                     print(f"  [report] too frequent / risk control (code={code}), rotate cookie")
                     retry_ok = False
                     for attempt in range(len(_COOKIE_POOL)):
@@ -831,7 +883,7 @@ async def auto_report_comments(new_flagged_comments):
                         if not new_sess or not new_jct:
                             continue
                         await asyncio.sleep(60 + random.randint(10, 30))
-                        r2 = requests.post(report_url, data={**data, "csrf": new_jct}, cookies={"SESSDATA": new_sess}, headers=headers, timeout=10)
+                        r2 = requests.post(f"https://{API_DOMAINS[api_domain_idx]}{report_path}", data={**data, "csrf": new_jct}, cookies={"SESSDATA": new_sess}, headers=headers, timeout=10)
                         result2 = r2.json()
                         code2 = result2.get("code", -1)
                         if code2 == 0:
@@ -858,9 +910,18 @@ async def auto_report_comments(new_flagged_comments):
                             print(f"  [report] rotate FAIL rpid={rpid} code={code2} msg={result2.get('message','?')}")
                             break
                     if not retry_ok:
-                        print(f"  [report] all cookies exhausted rpid={rpid}")
-                        failed_list.append(c)
+                        print(f"  [report] ALL strategies -352 exhausted, stopping run for cooldown")
+                        await asyncio.sleep(30 + random.randint(5, 15))
+                        existing = next((x for x in failed_list if x.get("rpid") == rpid), None)
+                        if existing:
+                            existing["retry_count"] = existing.get("retry_count", 0) + 1
+                            existing["last_retry"] = datetime.now(CST).isoformat()
+                        else:
+                            c["retry_count"] = 1
+                            c["last_retry"] = datetime.now(CST).isoformat()
+                            failed_list.append(c)
                         save_failed_reports(failed_list)
+                        break
             sessdata = _rotate_sessdata()
             jct = _rotate_jct()
             cookies = {"SESSDATA": sessdata}
@@ -870,21 +931,48 @@ async def auto_report_comments(new_flagged_comments):
             jct = _rotate_jct()
             cookies = {"SESSDATA": sessdata}
     
-    remaining = [x for x in failed_list if x.get("rpid") not in reported]
-    save_failed_reports(remaining)
-    
     if reported - load_reported():
         save_reported(reported)
-    
-    # 本轮未处理的（因 max_per_run 跳过）加入重试队列
-    unprocessed = [c for c in new_flagged_comments if c.get("rpid") and c.get("rpid") not in reported]
-    failed_list = load_failed_reports()
-    for c in unprocessed:
-        if not any(x.get("rpid") == c.get("rpid") for x in failed_list):
-            failed_list.append(c)
-    save_failed_reports(failed_list)
-    if unprocessed:
-        print(f"  [report] queued {len(unprocessed)} for next cycle")
+
+    # 构建去重队列：合并原失败 + 本轮未处理，按rpid去重
+    new_queue = {}
+    for item in failed_list:
+        rpid = item.get("rpid")
+        if rpid and rpid not in reported:
+            if rpid not in new_queue:
+                new_queue[rpid] = item
+    for c in new_flagged_comments:
+        rpid = c.get("rpid")
+        if not rpid or rpid in reported:
+            continue
+        if rpid in new_queue:
+            new_queue[rpid]["retry_count"] = new_queue[rpid].get("retry_count", 0) + 1
+            new_queue[rpid]["last_retry"] = datetime.now(CST).isoformat()
+        else:
+            c["retry_count"] = c.get("retry_count", 1)
+            c["last_retry"] = datetime.now(CST).isoformat()
+            new_queue[rpid] = c
+
+    # 时间衰减重试：上次重试超过1小时才重新尝试，避免重复 -352
+    now_ts = datetime.now(CST)
+    skipped = 0
+    remaining = []
+    for item in new_queue.values():
+        last_retry_str = item.get("last_retry", "")
+        if last_retry_str:
+            try:
+                last_retry = datetime.fromisoformat(last_retry_str)
+                if (now_ts - last_retry).total_seconds() < 3600:
+                    skipped += 1
+                    continue
+            except Exception:
+                pass
+        remaining.append(item)
+    save_failed_reports(remaining)
+    if remaining:
+        print(f"  [report] {len(remaining)} items queued for next cycle")
+    if skipped:
+        print(f"  [report] {skipped} items cooling down (retried <1h ago)")
     
     return count
 
@@ -1489,9 +1577,16 @@ async def main():
     if new_flagged > 0:
         save_data(data)
         print(f"  新标记 {new_flagged} 条，累计 {len(data['comments'])} 条")
+        newly = [c for c in data["comments"] if c.get("detected_at", "").startswith(datetime.now(CST).strftime("%Y-%m-%d"))][:new_flagged]
         if AUTO_REPORT:
-            newly = [c for c in data["comments"] if c.get("detected_at", "").startswith(datetime.now(CST).strftime("%Y-%m-%d"))][:new_flagged]
             await auto_report_comments(newly)
+        else:
+            failed = load_failed_reports()
+            for c in newly:
+                if not any(x.get("rpid") == c["rpid"] for x in failed):
+                    failed.append(c)
+            save_failed_reports(failed)
+            print(f"  [queue] {len(newly)} new flagged queued for later reporting")
     else:
         print(f"  无新标记（共 {len(comments)} 条已检查）")
         if AUTO_REPORT:

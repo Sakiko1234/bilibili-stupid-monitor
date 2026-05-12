@@ -1,20 +1,13 @@
 #!/bin/bash
 cd /root/bilibili-stupid-monitor
 
-# 防并发锁
-exec 9>/tmp/monitor.lock
-if ! flock -n 9; then
-    echo "[$(date '+%m-%d %H:%M:%S')] 上一轮未结束，跳过" >> cron.log
-    exit 0
-fi
-
 # 加载环境变量
 set -a
 source .env
 set +a
 
 # 运行监测
-/usr/bin/python3.11 monitor.py >> cron.log 2>&1
+/usr/bin/python3.11 -u monitor.py >> cron.log 2>&1
 
 # 推送变化的文件到 GitHub Pages
 git add index.html users.html report_status.html
