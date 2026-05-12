@@ -28,7 +28,7 @@ HTML_FILE = "index.html"
 USERS_FILE = "users.html"
 AVATAR_CACHE = {}  # lazy init
 
-DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", os.environ.get("DEEPSEEK_API_KEY2", ""))
+DEEPSEEK_KEY = os.environ["DEEPSEEK_API_KEY"]
 AUTO_REPORT = os.environ.get("AUTO_REPORT", "false").lower() in ("1", "true", "yes")
 
 REPORT_INTERVAL = 120
@@ -425,36 +425,73 @@ def process_queue(state):
 
 # ── Main ──
 
-def main():
-    print(f"[{datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}] Pipeline start, cookie pool: {len(_COOKIE_POOL)}")
-    state = load_state()
-    state.setdefault("queue", [])
+MAX_LOOP_REPORTS = 20  # 每轮循环最多举报数，达到后也继续下一轮
+
+def report_batch(flagged_list, state):
+    """举报一批标记评论，返回(成功数, -352是否触发)"""
     queue = state.get("queue", [])
+    reported = load_reported()
+    ok_count = 0
+    hit_352 = False
 
-    # 1. 先处理举报队列
-    if queue:
-        process_queue(state)
-        queue = state.get("queue", [])
+    for c in flagged_list:
+        if c["rpid"] in reported:
+            continue
+        reason_text = c.get("report_content") or "引战拉踩攻击米家其他游戏"
+        if len(reason_text) < 2:
+            reason_text = "引战拉踩攻击米家其他游戏"
 
-    # 2. 队列未清空 → 只举报，不爬新评论
-    if queue:
-        print(f"  [queue] still {len(queue)} items pending, skip fetching")
-        if AUTO_REPORT:
-            save_state(state)
-            return
-        # 未开启举报时也跳过
-        save_state(state)
-        return
+        code = do_report(c["rpid"], reason_text)
+        if code == 0:
+            reported.add(c["rpid"])
+            ok_count += 1
+            print(f"  [report] OK rpid={c['rpid']} user={c['user']}")
+            tracking = load_tracking()
+            tracking[str(c["rpid"])] = {
+                "user": c["user"],
+                "content": c.get("content", "")[:100],
+                "reason": reason_text[:60],
+                "oid": AID,
+                "reported_at": datetime.now(CST).isoformat(),
+                "checked_at": None,
+                "result": "pending",
+            }
+            save_tracking(tracking)
+            _rotate_cookie()
+            time.sleep(REPORT_INTERVAL + random.randint(5, 20))
+        elif code in (12022, 12008):
+            reported.add(c["rpid"])
+            print(f"  [report] skip rpid={c['rpid']} (already {'deleted' if code==12022 else 'reported'})")
+        elif code == -352:
+            print(f"  [report] -352, cooldown {COOLDOWN_352}s...")
+            time.sleep(COOLDOWN_352)
+            hit_352 = True
+            break
+        else:
+            print(f"  [report] FAIL rpid={c['rpid']} code={code}")
+            _rotate_cookie()
 
-    # 3. 队列已空 → 爬取新评论
+    # 未上报成功的推入队列
+    for c in reversed(flagged_list):
+        if c["rpid"] in reported:
+            break
+        if not any(x.get("rpid") == c["rpid"] for x in queue):
+            queue.append(c)
+
+    save_reported(reported)
+    state["queue"] = queue
+    save_state(state)
+    return ok_count, hit_352
+
+def scan_and_flag(state):
+    """爬取 20 页 → AI分析 → 返回标记列表"""
     print(f"  Resume: page={state['last_page']}, offset={state['next_offset']}, fetched={state['total_fetched']}")
     comments = fetch_pages(state)
-    print(f"  Fetched {len(comments)} comments")
 
     if not comments:
         print("  No comments, done")
         save_state(state)
-        return
+        return None
 
     data = load_flagged()
     if BVID not in data["videos"]:
@@ -468,9 +505,8 @@ def main():
     new_flagged = []
 
     for c in comments:
-        # 队列满了就停止分析
         if len(new_flagged) >= MAX_QUEUE_SIZE:
-            print(f"  [limit] queue full ({MAX_QUEUE_SIZE}), stop analyzing")
+            print(f"  [limit] {MAX_QUEUE_SIZE} flagged, stop analyzing")
             break
 
         if c["rpid"] in checked_ids:
@@ -510,68 +546,69 @@ def main():
     data["last_run"] = datetime.now(CST).strftime("%m-%d %H:%M")
 
     save_checked(checked_ids)
+    save_state(state)
 
     if new_flagged:
         save_flagged(data)
         print(f"  New flagged: {len(new_flagged)}, total: {len(data['comments'])}")
 
+    return new_flagged
+
+def main():
+    print(f"[{datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}] Pipeline start (continuous loop), cookie pool: {len(_COOKIE_POOL)}")
+    state = load_state()
+    state.setdefault("queue", [])
+    consecutive_352 = 0
+
+    while True:
+        queue = state.get("queue", [])
+
+        # 1. 清空举报队列
+        if queue:
+            print(f"  [loop] processing {len(queue)} queued reports")
+            ok, hit_352 = report_batch(list(queue), state)
+            queue = state.get("queue", [])
+            if hit_352:
+                consecutive_352 += 1
+                if consecutive_352 >= 2:
+                    print("  [loop] too many -352, save state and exit")
+                    save_state(state)
+                    return
+                continue  # wait cooldown done, retry queue
+            else:
+                consecutive_352 = 0
+            # 如果队列还是没清完（比如只有部分被举报了），继续循环
+            if queue:
+                continue
+
+        # 2. 队列清空 → 爬取新评论
+        flagged = scan_and_flag(state)
+        if flagged is None:
+            # 没有新评论了
+            print(f"  [loop] all comments scanned, page={state['last_page']}, done")
+            save_state(state)
+            return
+
+        if not flagged:
+            # 本轮没标记到 → 继续下一轮爬取
+            continue
+
+        # 3. 举报刚标记的
         if AUTO_REPORT:
-            reported = load_reported()
-            for c in new_flagged:
-                if c["rpid"] in reported:
-                    continue
-                reason_text = c.get("report_content") or "引战拉踩攻击米家其他游戏"
-                if len(reason_text) < 2:
-                    reason_text = "引战拉踩攻击米家其他游戏"
-
-                code = do_report(c["rpid"], reason_text)
-                if code == 0:
-                    reported.add(c["rpid"])
-                    print(f"  [report] OK rpid={c['rpid']} user={c['user']}")
-                    tracking = load_tracking()
-                    tracking[str(c["rpid"])] = {
-                        "user": c["user"],
-                        "content": c.get("content", "")[:100],
-                        "reason": reason_text[:60],
-                        "oid": AID,
-                        "reported_at": datetime.now(CST).isoformat(),
-                        "checked_at": None,
-                        "result": "pending",
-                    }
-                    save_tracking(tracking)
-                    _rotate_cookie()
-                    time.sleep(REPORT_INTERVAL + random.randint(5, 20))
-                elif code in (12022, 12008):
-                    reported.add(c["rpid"])
-                    print(f"  [report] skip rpid={c['rpid']} (already {'deleted' if code==12022 else 'reported'})")
-                elif code == -352:
-                    print(f"  [report] -352, cooldown {COOLDOWN_352}s...")
-                    time.sleep(COOLDOWN_352)
-                    # 未上报成功的推入队列
-                    if not any(x.get("rpid") == c["rpid"] for x in queue):
-                        queue.append(c)
-                    break
-                else:
-                    print(f"  [report] FAIL rpid={c['rpid']} code={code}")
-                    _rotate_cookie()
-
-            # 当前轮未上报完毕的也入队
-            for c in reversed(new_flagged):
-                if c["rpid"] in reported:
-                    break  # 后续都上报成功了
-                if not any(x.get("rpid") == c["rpid"] for x in queue):
-                    queue.append(c)
-
-            save_reported(reported)
-            state["queue"] = queue
+            ok, hit_352 = report_batch(flagged, state)
+            if hit_352:
+                consecutive_352 += 1
+            else:
+                consecutive_352 = 0
         else:
-            for c in new_flagged:
+            for c in flagged:
                 if not any(x.get("rpid") == c["rpid"] for x in queue):
                     queue.append(c)
             state["queue"] = queue
+            save_state(state)
 
+    # unreachable, but safety
     save_state(state)
-    print(f"  State saved: page={state['last_page']}, offset={state['next_offset']}, queue={len(state.get('queue',[]))}")
 
 if __name__ == "__main__":
     main()
