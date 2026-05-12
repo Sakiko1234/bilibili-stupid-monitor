@@ -6,6 +6,9 @@ set -a
 source .env
 set +a
 
+# 合并 pipeline 数据
+/usr/bin/python3.11 _merge_pipeline.py >> cron.log 2>&1
+
 # 运行监测
 /usr/bin/python3.11 -u monitor.py >> cron.log 2>&1
 
