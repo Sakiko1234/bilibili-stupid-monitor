@@ -330,7 +330,7 @@ def fetch_pages(state, pages=20):
 
 # ── Report ──
 
-MAX_QUEUE_SIZE = 5  # 队列达到此数量时只举报不爬取
+MAX_QUEUE_SIZE = 50  # 单轮最多标记条数，达到后先举报再继续爬
 
 def do_report(rpid, reason_text):
     sess, jct = _get_cookie()
