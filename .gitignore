@@ -14,3 +14,4 @@ data/.reported.json
 data/report_tracking.json
 data/avatars.json
 data/.checked.json
+*.bak
