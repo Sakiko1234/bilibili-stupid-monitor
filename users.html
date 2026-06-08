@@ -156,6 +156,14 @@ function getSorted() {
   list.sort(function(a, b) { return b.count - a.count; });
   return list;
 }
+var currentVideo = `all`;
+function filterVideo(e, vid) {
+  currentVideo = vid;
+  document.querySelectorAll(`.vid-tab`).forEach(function(t) { t.classList.remove(`active`); });
+  e.target.classList.add(`active`);
+  currentPage = 1;
+  render();
+}
 function getFiltered() {
   var sorted = getSorted();
   if (!currentKeyword) return sorted;
@@ -233,4 +241,4 @@ render();
 </script>
 </body>
 </html>
-<!-- rendered at 2026-06-08 23:00:02 -->
+<!-- rendered at 2026-06-08 23:05:02 -->
