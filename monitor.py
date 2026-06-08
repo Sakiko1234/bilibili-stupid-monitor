@@ -752,7 +752,8 @@ def build_report_html(tracking):
         ct = info.get("content", "?")[:60].replace("<", "&lt;").replace(">", "&gt;")
         rs = info.get("reason", "?")[:30].replace("<", "&lt;").replace(">", "&gt;")
         pt = (info.get("comment_time") or "")[:16]
-        items.append(f"<tr><td>{icon}</td><td>{(info.get('reported_at') or '?')[:16]}</td><td>{pt}</td><td>{info.get('user', '?')}</td><td style='max-width:260px;overflow:hidden'>{ct}</td><td>{rs}</td><td>{label}</td><td>{(info.get('checked_at') or '-')[:16]}</td></tr>")
+        oid = str(info.get("oid", ""))
+        items.append(f"<tr data-oid=\"{oid}\"><td>{icon}</td><td>{(info.get('reported_at') or '?')[:16]}</td><td>{pt}</td><td>{info.get('user', '?')}</td><td style='max-width:260px;overflow:hidden'>{ct}</td><td>{rs}</td><td>{label}</td><td>{(info.get('checked_at') or '-')[:16]}</td></tr>")
     pending = sum(1 for i in tracking.values() if i.get("result") == "pending")
     failed = sum(1 for i in tracking.values() if i.get("result") == "check_failed")
     removed = sum(1 for i in tracking.values() if i.get("result") == "removed")
@@ -766,17 +767,27 @@ def build_report_html(tracking):
 body{{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#1a1a24;color:#e8e8ed;padding:20px;max-width:1000px;margin:0 auto}}
 h1{{color:#fb7299;margin-bottom:4px;font-size:18px}}
 h1 span{{font-size:12px;color:#8b8b9e;font-weight:400}}
+.vid-tabs{{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}}
+.vid-tab{{background:#1f1f2e;color:#8b8b9e;border:1px solid #2a2a3a;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:12px;transition:all 0.2s}}
+.vid-tab:hover{{border-color:#fb7299;color:#fb7299}}
+.vid-tab.active{{background:#fb7299;color:#fff;border-color:#fb7299}}
 .stats{{display:flex;gap:20px;margin:12px 0 18px;font-size:13px;color:#8b8b9e}}
 .stats b{{color:#fb7299}}
 table{{width:100%;border-collapse:collapse;font-size:13px}}
 th{{text-align:left;padding:8px 10px;border-bottom:1px solid #2a2a3a;color:#8b8b9e;font-size:12px}}
 td{{padding:8px 10px;border-bottom:1px solid #1f1f2e}}
+tr.hidden{{display:none}}
 tr:hover{{background:rgba(251,114,153,0.05)}}
 footer{{text-align:center;padding:24px;color:#8b8b9e;font-size:11px}}
 </style></head>
 <body>
 <h1>report feedback <span>auto check 10min delay</span></h1>
-<div class="stats">
+<div class="vid-tabs">
+  <button class="vid-tab active" onclick="filterVid(event,'all')">all</button>
+  <button class="vid-tab" onclick="filterVid(event,'114568202297147')">BV1WQ</button>
+  <button class="vid-tab" onclick="filterVid(event,'116710300458711')">BV1LK</button>
+</div>
+<div class="stats" id="stats">
   <div>total <b>{len(tracking)}</b></div>
   <div>pending <b>{pending}</b></div>
   <div>deleted <b>{removed}</b></div>
@@ -787,6 +798,34 @@ footer{{text-align:center;padding:24px;color:#8b8b9e;font-size:11px}}
 {"".join(items)}
 </table>
 <footer>every 5min auto update</footer>
+<script>
+function filterVid(e, oid) {{
+  document.querySelectorAll(".vid-tab").forEach(function(t) {{ t.classList.remove("active"); }});
+  e.target.classList.add("active");
+  var rows = document.querySelectorAll("tr[data-oid]");
+  var total = 0, pending = 0, removed = 0, still = 0;
+  rows.forEach(function(r) {{
+    if (oid === "all" || r.getAttribute("data-oid") === oid) {{
+      r.classList.remove("hidden");
+      total++;
+      var cells = r.querySelectorAll("td");
+      if (cells.length >= 7) {{
+        var status = cells[6].textContent;
+        if (status === "pending") pending++;
+        else if (status === "deleted") removed++;
+        else if (status === "not processed") still++;
+      }}
+    }} else {{
+      r.classList.add("hidden");
+    }}
+  }});
+  document.getElementById("stats").innerHTML =
+    "<div>total <b>" + total + "</b></div>" +
+    "<div>pending <b>" + pending + "</b></div>" +
+    "<div>deleted <b>" + removed + "</b></div>" +
+    "<div>not processed <b>" + still + "</b></div>";
+}}
+</script>
 </body></html>"""
 async def auto_report_comments(new_flagged_comments):
     if not AUTO_REPORT:
