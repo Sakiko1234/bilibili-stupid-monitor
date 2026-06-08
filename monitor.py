@@ -841,7 +841,7 @@ async def auto_report_comments(new_flagged_comments):
     reported = load_reported()
     count = 0
     max_per_run = 5
-    report_interval = 120  # 每次举报间隔秒数（基础值，实际会加随机扰动）
+    report_interval = 90  # 每次举报间隔秒数（基础值，实际会加随机扰动）
     # 3个API域名，风控可能独立不互通
     API_DOMAINS = ["api.bilibili.com", "api.biliapi.net", "api.biliapi.com"]
     api_domain_idx = 0

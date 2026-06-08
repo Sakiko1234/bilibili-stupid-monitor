@@ -31,7 +31,7 @@ AVATAR_CACHE = {}  # lazy init
 DEEPSEEK_KEY = os.environ["DEEPSEEK_API_KEY"]
 AUTO_REPORT = os.environ.get("AUTO_REPORT", "false").lower() in ("1", "true", "yes")
 
-REPORT_INTERVAL = 120
+REPORT_INTERVAL = 90
 COOLDOWN_352 = 300
 API_DOMAINS = ["api.bilibili.com", "api.biliapi.net", "api.biliapi.com"]
 
