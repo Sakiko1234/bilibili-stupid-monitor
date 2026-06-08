@@ -8,14 +8,29 @@ CST = timezone(timedelta(hours=8))  # 中国时区
 import requests
 import random
 import re
-from bilibili_api import bvid2aid  # 仅用于 get_comment_url
-
-BVID = "BV1WQjuz4EzZ"
-# 预计算 aid，避免每次调 API 都转换
 try:
-    AID = str(bvid2aid(BVID))
+    from bilibili_api import bvid2aid  # 仅用于 get_comment_url
 except Exception:
-    AID = "114568202297147"  # 硬编码兜底
+    bvid2aid = None
+
+BVIDS = ["BV1WQjuz4EzZ", "BV1LKE86xEK1"]
+# 预计算 aid，避免每次调 API 都转换
+
+def _build_aid_map():
+    m = {}
+    for bvid in BVIDS:
+        try:
+            if bvid2aid is not None:
+                m[bvid] = str(bvid2aid(bvid))
+        except Exception:
+            pass
+    if "BV1WQjuz4EzZ" not in m:
+        m["BV1WQjuz4EzZ"] = "114568202297147"
+    if "BV1LKE86xEK1" not in m:
+        m["BV1LKE86xEK1"] = "116710300458711"
+    return m
+
+AID_MAP = _build_aid_map()
 
 DATA_FILE = "data/flagged.json"
 CHECKED_FILE = "data/.checked.json"
@@ -95,7 +110,7 @@ def _rotate_jct():
 
 BILIBILI_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Referer": f"https://www.bilibili.com/video/{BVID}",
+    "Referer": "https://www.bilibili.com",
 }
 
 AI_PROMPT = """你是原神社区的内容审核员，负责识别「米家内斗」类低质引战评论。
@@ -384,6 +399,10 @@ HTML = """<!DOCTYPE html>
   .summary {{ background: var(--card-bg); border: 1px solid rgba(251,114,153,0.15); border-radius: 8px; padding: 12px 18px; margin-bottom: 14px; font-size: 13px; line-height: 1.7; }}
   .summary .icon {{ font-size: 16px; margin-right: 4px; }}
   .summary .text {{ color: var(--bili-pink); }}
+  .video-tabs {{ display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }}
+  .vid-tab {{ background: var(--card-bg); color: var(--dim); border: 1px solid var(--border); border-radius: 6px; padding: 4px 14px; cursor: pointer; font-size: 12px; transition: all 0.2s; }}
+  .vid-tab:hover {{ border-color: var(--bili-pink); color: var(--bili-pink); }}
+  .vid-tab.active {{ background: var(--bili-pink); color: #fff; border-color: var(--bili-pink); }}
   .toolbar {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 13px; color: var(--dim); }}
   .toolbar select {{ background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 28px 6px 10px; font-size: 13px; cursor: pointer; appearance: none; }}
   .search-box {{ background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 180px; outline: none; transition: border-color 0.2s; }}
@@ -451,6 +470,11 @@ HTML = """<!DOCTYPE html>
 <div class="main">
 <div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a></div>
 <h1><span>AI 自动识别 · 实时更新</span></h1>
+<div class="video-tabs" id="videoTabs">
+  <button class="vid-tab active" data-bvid="all" onclick="filterVideo(event, 'all')">全部</button>
+  <button class="vid-tab" data-bvid="BV1WQjuz4EzZ" onclick="filterVideo(event, 'BV1WQjuz4EzZ')">视频1</button>
+  <button class="vid-tab" data-bvid="BV1LKE86xEK1" onclick="filterVideo(event, 'BV1LKE86xEK1')">视频2</button>
+</div>
 <div class="stats">
   <div>累计标记 <b id="totalCount">{total}</b> 条</div>
   <div>监控视频 <b>{videos}</b> 个</div>
@@ -491,11 +515,23 @@ function getSorted() {{
   if (currentSort === 'newest') list.reverse();
   return list;
 }}
+var currentVideo = 'all';
+function filterVideo(e, vid) {{
+  currentVideo = vid;
+  document.querySelectorAll('.vid-tab').forEach(function(t) {{ t.classList.remove('active'); }});
+  e.target.classList.add(`active`);
+  currentPage = 1;
+  render();
+}}
 function getFiltered() {{
   const sorted = getSorted();
-  if (!currentKeyword) return sorted;
+  var filtered = sorted;
+  if (currentVideo !== 'all') {{
+    filtered = filtered.filter(function(c) {{ return c.bvid === currentVideo; }});
+  }}
+  if (!currentKeyword) return filtered;
   const kw = currentKeyword.toLowerCase();
-  return sorted.filter(c =>
+  return filtered.filter(c =>
     (c.user || '').toLowerCase().includes(kw) ||
     (c.content || '').toLowerCase().includes(kw) ||
     (c.ai_reason || '').toLowerCase().includes(kw)
@@ -556,7 +592,11 @@ render();
 
 def get_comment_url(bvid, rpid):
     try:
-        aid = bvid2aid(bvid)
+        aid = AID_MAP.get(bvid)
+        if not aid and bvid2aid is not None:
+            aid = str(bvid2aid(bvid))
+        if not aid:
+            raise RuntimeError("unknown bvid")
         return f"https://www.bilibili.com/h5/comment/sub?oid={aid}&pageType=1&root={rpid}"
     except Exception:
         return f"https://www.bilibili.com/video/{bvid}?reply={rpid}"
@@ -671,7 +711,7 @@ def check_report_results():
         reported_at = datetime.fromisoformat(info["reported_at"])
         if (now - reported_at).total_seconds() < 600:
             continue
-        oid = info.get("oid", AID)
+        oid = info.get("oid", AID_MAP.get(list(AID_MAP.keys())[0], ""))
         try:
             resp = requests.get(
                 "https://api.bilibili.com/x/v2/reply/detail",
@@ -769,7 +809,7 @@ async def auto_report_comments(new_flagged_comments):
     report_path = "/x/v2/reply/report"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": f"https://www.bilibili.com/video/{BVID}",
+        "Referer": "https://www.bilibili.com",
     }
     cookies = {"SESSDATA": sessdata}
 
@@ -792,7 +832,7 @@ async def auto_report_comments(new_flagged_comments):
             content_text = rc if len(rc) >= 2 else "引战拉踩攻击米家其他游戏"
 
             data = {
-                "oid": int(AID),
+                "oid": int(AID_MAP.get(c.get("bvid", ""), list(AID_MAP.values())[0])),
                 "type": 1,
                 "rpid": rpid,
                 "reason": 4,
@@ -811,7 +851,7 @@ async def auto_report_comments(new_flagged_comments):
                     "user": c.get("user", "?"),
                     "content": c.get("content", "")[:100],
                     "reason": c.get("report_content", c.get("ai_reason", "?"))[:60],
-                    "oid": AID,
+                    "oid": AID_MAP.get(c.get("bvid", ""), list(AID_MAP.values())[0]),
                     "reported_at": datetime.now(CST).isoformat(),
                     "checked_at": None,
                     "result": "pending"
@@ -863,7 +903,7 @@ async def auto_report_comments(new_flagged_comments):
                             "user": c.get("user", "?"),
                             "content": c.get("content", "")[:100],
                             "reason": c.get("report_content", c.get("ai_reason", "?"))[:60],
-                            "oid": AID,
+                            "oid": AID_MAP.get(c.get("bvid", ""), list(AID_MAP.values())[0]),
                             "reported_at": datetime.now(CST).isoformat(),
                             "checked_at": None,
                             "result": "pending"
@@ -896,7 +936,7 @@ async def auto_report_comments(new_flagged_comments):
                                 "user": c.get("user", "?"),
                                 "content": c.get("content", "")[:100],
                                 "reason": c.get("report_content", c.get("ai_reason", "?"))[:60],
-                                "oid": AID,
+                                "oid": AID_MAP.get(c.get("bvid", ""), list(AID_MAP.values())[0]),
                                 "reported_at": datetime.now(CST).isoformat(),
                                 "checked_at": None,
                                 "result": "pending"
@@ -980,9 +1020,10 @@ def fetch_comments(bvid, max_pages=3):
     """直接用 requests 调 B站 API，自动切换 cookie 绕过 412 风控"""
     all_comments = []
     next_offset = 0
+    aid = AID_MAP.get(bvid, list(AID_MAP.values())[0])
 
     def _try_fetch_page(page, sess):
-        params = {"oid": AID, "type": "1", "mode": "2", "ps": "20", "next": str(next_offset)}
+        params = {"oid": aid, "type": "1", "mode": "2", "ps": "20", "next": str(next_offset)}
         cookies = {"SESSDATA": sess} if sess else None
         resp = requests.get("https://api.bilibili.com/x/v2/reply/main",
             params=params, cookies=cookies, headers=BILIBILI_HEADERS, timeout=15)
@@ -1276,6 +1317,14 @@ function getSorted() {{
   list.sort(function(a, b) {{ return b.count - a.count; }});
   return list;
 }}
+var currentVideo = 'all';
+function filterVideo(e, vid) {{
+  currentVideo = vid;
+  document.querySelectorAll('.vid-tab').forEach(function(t) {{ t.classList.remove('active'); }});
+  e.target.classList.add(`active`);
+  currentPage = 1;
+  render();
+}}
 function getFiltered() {{
   var sorted = getSorted();
   if (!currentKeyword) return sorted;
@@ -1435,6 +1484,7 @@ def build_html(data):
             "like": c.get("like", 0),
             "content": c.get("content", ""),
             "level": c.get("level", 0),
+            "bvid": c.get("bvid", "?"),
             "ai_reason": c.get("ai_reason", "?")[:80],
             "comment_url": get_comment_url(c.get("bvid", ""), c.get("rpid", "")),
             "anchor_url": f"https://www.bilibili.com/video/{c.get('bvid', '')}#reply{c.get('rpid', '')}",
@@ -1483,9 +1533,13 @@ def build_html(data):
     )
 
 async def main():
-    print(f"[{datetime.now(CST).strftime('%H:%M:%S')}] 开始监测 {BVID}")
+    for bvid in BVIDS:
+        await _monitor_one(bvid)
 
-    comments = fetch_comments(BVID)
+async def _monitor_one(bvid):
+    print(f"[{datetime.now(CST).strftime('%H:%M:%S')}] 开始监测 {bvid}")
+
+    comments = fetch_comments(bvid)
     print(f"  拉取 {len(comments)} 条")
 
     if not comments:
@@ -1520,15 +1574,15 @@ async def main():
     if filled_avatars:
         print(f"  🖼️ {filled_avatars} 个头像已回填")
 
-    if BVID not in data["videos"]:
-        data["videos"][BVID] = {
-            "title": BVID,
+    if bvid not in data["videos"]:
+        data["videos"][bvid] = {
+            "title": bvid,
             "first_check": datetime.now(CST).isoformat(),
             "total_checked": 0,
         }
 
     checked = load_checked()
-    checked_ids = checked.setdefault(BVID, [])
+    checked_ids = checked.setdefault(bvid, [])
     new_flagged = 0
 
     for c in comments:
@@ -1560,15 +1614,15 @@ async def main():
 
         if is_flag:
             entry = {
-                **c, "bvid": BVID, "ai_reason": reason,
+                **c, "bvid": bvid, "ai_reason": reason,
                 "report_content": report_content or "引战拉踩攻击米家其他游戏",
                 "detected_at": datetime.now(CST).isoformat(),
             }
             data["comments"].insert(0, entry)
             new_flagged += 1
 
-    data["videos"][BVID]["total_checked"] += len(comments)
-    data["videos"][BVID]["last_check"] = datetime.now(CST).isoformat()
+    data["videos"][bvid]["total_checked"] += len(comments)
+    data["videos"][bvid]["last_check"] = datetime.now(CST).isoformat()
     data["last_run"] = datetime.now(CST).strftime("%m-%d %H:%M")
 
     # checked_ids 存独立文件（不提交 git 减轻仓库体积）

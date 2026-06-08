@@ -333,21 +333,18 @@ def fetch_pages(state, pages=20):
 MAX_QUEUE_SIZE = 50  # 单轮最多标记条数，达到后先举报再继续爬
 
 def do_report(rpid, reason_text):
+    """举报单条评论，与 monitor.py 同步的激进重试策略"""
     sess, jct = _get_cookie()
     if not sess or not jct:
         print("  [report] no cookie, skip")
         return None
 
-    data = {
-        "oid": int(AID), "type": 1, "rpid": rpid,
-        "reason": 4, "content": reason_text, "csrf": jct,
-    }
-
+    # 先尝试3个API域名
     for domain_idx in range(len(API_DOMAINS)):
         try:
             r = requests.post(
-                f"https://{API_DOMAINS[domain_idx]}{'/x/v2/reply/report'}",
-                data=data,
+                f"https://{API_DOMAINS[domain_idx]}/x/v2/reply/report",
+                data={"oid": int(AID), "type": 1, "rpid": rpid, "reason": 4, "content": reason_text, "csrf": jct},
                 cookies={"SESSDATA": sess},
                 headers=HEADERS,
                 timeout=10,
@@ -360,8 +357,94 @@ def do_report(rpid, reason_text):
                 return 12022
             elif code == 12008:
                 return 12008
-            elif code in (12019, -352):
+            elif code == -101:
+                print("  [report] not logged in, rotate cookie")
+                sess, jct = _rotate_cookie()
+                if not sess:
+                    return -101
+                # retry with new cookie on same domain
+                r = requests.post(
+                    f"https://{API_DOMAINS[domain_idx]}/x/v2/reply/report",
+                    data={"oid": int(AID), "type": 1, "rpid": rpid, "reason": 4, "content": reason_text, "csrf": jct},
+                    cookies={"SESSDATA": sess},
+                    headers=HEADERS,
+                    timeout=10,
+                )
+                result = r.json()
+                code2 = result.get("code", -1)
+                if code2 == 0:
+                    return 0
+                elif code2 in (12022, 12008):
+                    return code2
                 continue
+            elif code in (12019, -352):
+                # 先切换备用域名
+                alt_ok = False
+                for alt_domain in API_DOMAINS:
+                    if alt_domain == API_DOMAINS[domain_idx]:
+                        continue
+                    time.sleep(3 + random.randint(1, 5))
+                    try:
+                        r = requests.post(
+                            f"https://{alt_domain}/x/v2/reply/report",
+                            data={"oid": int(AID), "type": 1, "rpid": rpid, "reason": 4, "content": reason_text, "csrf": jct},
+                            cookies={"SESSDATA": sess},
+                            headers=HEADERS,
+                            timeout=10,
+                        )
+                        result = r.json()
+                        code = result.get("code", -1)
+                        if code == 0:
+                            alt_ok = True
+                            print(f"  [report] domain switch OK to {alt_domain}")
+                            return 0
+                        elif code not in (12019, -352):
+                            print(f"  [report] alt domain {alt_domain} code={code}")
+                            break
+                        else:
+                            print(f"  [report] alt domain {alt_domain} also -352")
+                    except Exception as e:
+                        print(f"  [report] alt domain error: {e}")
+                        continue
+                if alt_ok:
+                    continue
+
+                # 域名全失败，遍历cookie池重试
+                print(f"  [report] -352 all domains, rotating cookies...")
+                retry_ok = False
+                for attempt in range(len(_COOKIE_POOL)):
+                    new_sess, new_jct = _rotate_cookie()
+                    if not new_sess or not new_jct:
+                        continue
+                    time.sleep(60 + random.randint(10, 30))
+                    try:
+                        r = requests.post(
+                            f"https://{API_DOMAINS[domain_idx]}/x/v2/reply/report",
+                            data={"oid": int(AID), "type": 1, "rpid": rpid, "reason": 4, "content": reason_text, "csrf": new_jct},
+                            cookies={"SESSDATA": new_sess},
+                            headers=HEADERS,
+                            timeout=10,
+                        )
+                        result = r.json()
+                        code = result.get("code", -1)
+                        if code == 0:
+                            retry_ok = True
+                            print(f"  [report] retry OK rpid={rpid} (cookie {attempt+1}/{len(_COOKIE_POOL)})")
+                            return 0
+                        elif code in (12019, -352):
+                            print(f"  [report] cookie {attempt+1}/{len(_COOKIE_POOL)} code={code}")
+                        elif code in (12022, 12008):
+                            return code
+                        else:
+                            print(f"  [report] cookie {attempt+1}/{len(_COOKIE_POOL)} FAIL code={code}")
+                            break
+                    except Exception as e:
+                        print(f"  [report] cookie rotate error: {e}")
+                        continue
+                if not retry_ok:
+                    print(f"  [report] ALL cookies -352 exhausted for rpid={rpid}")
+                    return -352
+                return -352
             else:
                 return code
         except Exception as e:
