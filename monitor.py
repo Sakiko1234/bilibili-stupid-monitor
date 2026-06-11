@@ -468,7 +468,7 @@ HTML = """<!DOCTYPE html>
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 </div>
 <div class="main">
-<div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a></div>
+<div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a><a href="uid_341397778.html">UID3413</a></div>
 <h1><span>AI 自动识别 · 实时更新</span></h1>
 <div class="video-tabs" id="videoTabs">
   <button class="vid-tab active" data-bvid="all" onclick="filterVideo(event, 'all')">全部</button>
@@ -1315,7 +1315,7 @@ USERS_PAGE = """<!DOCTYPE html>
 </div>
 <div class="main">
 <div class="nav">
-  <a href="./">← 评论列表</a>
+  <a href="./">← 评论列表</a><a href="uid_341397778.html">UID3413</a>
   <a href="users.html" class="active">🏆 名人堂</a>
 </div>
 <h1>🏆 弱智名人堂</h1>
