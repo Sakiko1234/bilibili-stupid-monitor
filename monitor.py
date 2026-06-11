@@ -1189,7 +1189,7 @@ def check_comment(text, pictures=None):
         if any(t in text for t in HARD_RULE_TERMS):
             return True, "硬规则", report_content
         # 第二判：v4-flash 判断是否误判（「是」=误判驳回，「否」=维持）
-        review = _call_ai("deepseek-v4-flash", AI_REVIEW_PROMPT, text, max_tokens=200)
+        review = _call_ai("deepseek-v4-pro", AI_REVIEW_PROMPT, text, max_tokens=200)
         if review in ('是',) or review.startswith("是"):
             return False, "复审驳回", None
         else:
