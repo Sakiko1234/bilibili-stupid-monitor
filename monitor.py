@@ -491,7 +491,7 @@ HTML = """<!DOCTYPE html>
 </div>
 <div id="commentsContainer">{placeholder}</div>
 <div class="pager" id="pager"></div>
-<footer>DeepSeek AI · B站评论区数据</footer>
+<footer></footer>
 </div>
 <script>
 (function() {{
@@ -1333,7 +1333,7 @@ USERS_PAGE = """<!DOCTYPE html>
 <div class="no-result" id="noResult">没有匹配的用户</div>
 <div id="container">{placeholder}</div>
 <div class="pager" id="pager"></div>
-<footer>DeepSeek AI · B站评论区数据</footer>
+<footer></footer>
 </div>
 <script>
 (function() {{
