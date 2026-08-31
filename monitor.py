@@ -341,7 +341,7 @@ HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <script>var bgs=['bg.jpg','bg2.jpg','bg3.jpg','bg4.jpg'];document.documentElement.style.setProperty('--bg-image','url('+bgs[Math.floor(Math.random()*bgs.length)]+')');</script>
-<title>bilibili</title>
+<title>社区评论观察台</title>
 <style>
   :root {{
     --bili-pink: #fb7299; --bili-blue: #00a1d6;
@@ -461,14 +461,15 @@ HTML = """<!DOCTYPE html>
     footer {{ padding: 20px 0 12px; font-size: 11px; }}
   }}
 </style>
+<link rel="stylesheet" href="dashboard.css">
 </head>
-<body>
+<body class="page-home">
 <div class="topbar">
   <div class="logo">🚩 聊天室优质文案合集</div>
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 </div>
 <div class="main">
-<div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a></div>
+<div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a><a href="report_status.html">举报反馈</a></div>
 <h1><span>AI 自动识别 · 实时更新</span></h1>
 <div class="video-tabs" id="videoTabs">
   <button class="vid-tab active" data-bvid="all" onclick="filterVideo(event, 'all')">全部</button>
@@ -748,7 +749,7 @@ def build_report_html(tracking):
     for rpid_str, info in sorted(tracking.items(), key=lambda x: x[1].get("reported_at", ""), reverse=True):
         result = info.get("result", "pending")
         icon = {"removed": "&#x2705;", "still_there": "&#x274C;", "pending": "&#x23F3;", "check_failed": "&#x26A0;&#xFE0F;"}.get(result, "&#x2753;")
-        label = {"removed": "deleted", "still_there": "not processed", "pending": "pending", "check_failed": "retry later"}.get(result, result)
+        label = {"removed": "已删除", "still_there": "未删除", "pending": "处理中", "check_failed": "稍后重试"}.get(result, result)
         ct = info.get("content", "?")[:60].replace("<", "&lt;").replace(">", "&gt;")
         rs = info.get("reason", "?")[:30].replace("<", "&lt;").replace(">", "&gt;")
         pt = (info.get("comment_time") or "")[:16]
@@ -761,7 +762,7 @@ def build_report_html(tracking):
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>report feedback</title>
+<title>举报追踪 · 社区评论观察台</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#1a1a24;color:#e8e8ed;padding:20px;max-width:1000px;margin:0 auto}}
@@ -779,9 +780,17 @@ td{{padding:8px 10px;border-bottom:1px solid #1f1f2e}}
 tr.hidden{{display:none}}
 tr:hover{{background:rgba(251,114,153,0.05)}}
 footer{{text-align:center;padding:24px;color:#8b8b9e;font-size:11px}}
-</style></head>
-<body>
-<h1>report feedback <span>auto check 10min delay</span></h1>
+</style>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body class="page-reports">
+<div class="topbar">
+  <div class="logo">🚩 举报追踪</div>
+  <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
+</div>
+<div class="main">
+<div class="nav"><a href="./">评论</a><a href="users.html">名人堂</a><a href="report_status.html" class="active">举报反馈</a></div>
+<h1>举报处理状态 <span>B站举报API反馈</span></h1>
 <div class="vid-tabs">
   <button class="vid-tab active" onclick="filterVid(event,'all')">all</button>
   <button class="vid-tab" onclick="filterVid(event,'114568202297147')">BV1WQ</button>
@@ -794,11 +803,22 @@ footer{{text-align:center;padding:24px;color:#8b8b9e;font-size:11px}}
   <div>not processed <b>{still}</b></div>
 </div>
 <table>
-<tr><th></th><th>time</th><th>user</th><th>content</th><th>reason</th><th>result</th><th>checked</th></tr>
+<tr><th>状态</th><th>举报时间</th><th>评论时间</th><th>用户</th><th>内容</th><th>判定理由</th><th>结果</th><th>检查时间</th></tr>
 {"".join(items)}
 </table>
-<footer>every 5min auto update</footer>
+<footer>每 5 分钟自动更新</footer>
+</div>
 <script>
+(function() {{
+  var saved = localStorage.getItem('theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+}})();
+function toggleTheme() {{
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'dark' ? '' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+}}
 function filterVid(e, oid) {{
   document.querySelectorAll(".vid-tab").forEach(function(t) {{ t.classList.remove("active"); }});
   e.target.classList.add("active");
@@ -820,10 +840,10 @@ function filterVid(e, oid) {{
     }}
   }});
   document.getElementById("stats").innerHTML =
-    "<div>total <b>" + total + "</b></div>" +
-    "<div>pending <b>" + pending + "</b></div>" +
-    "<div>deleted <b>" + removed + "</b></div>" +
-    "<div>not processed <b>" + still + "</b></div>";
+    "<div>总计 <b>" + total + "</b></div>" +
+    "<div>处理中 <b>" + pending + "</b></div>" +
+    "<div>已删除 <b>" + removed + "</b></div>" +
+    "<div>未删除 <b>" + still + "</b></div>";
 }}
 </script>
 </body></html>"""
@@ -1205,7 +1225,7 @@ USERS_PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <script>var bgs=['bg.jpg','bg2.jpg','bg3.jpg','bg4.jpg'];document.documentElement.style.setProperty('--bg-image','url('+bgs[Math.floor(Math.random()*bgs.length)]+')');</script>
-<title>弱智名人堂</title>
+<title>用户画像 · 社区评论观察台</title>
 <style>
   :root {{
     --bili-pink: #fb7299; --bili-blue: #00a1d6;
@@ -1307,8 +1327,9 @@ USERS_PAGE = """<!DOCTYPE html>
     footer {{ padding: 20px 0 12px; font-size: 11px; }}
   }}
 </style>
+<link rel="stylesheet" href="dashboard.css">
 </head>
-<body>
+<body class="page-users">
 <div class="topbar">
   <div class="logo">👤 弱智名人堂</div>
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
@@ -1317,6 +1338,7 @@ USERS_PAGE = """<!DOCTYPE html>
 <div class="nav">
   <a href="./">← 评论列表</a>
   <a href="users.html" class="active">🏆 名人堂</a>
+  <a href="report_status.html">举报反馈</a>
 </div>
 <h1>🏆 弱智名人堂</h1>
 <div class="stats">
