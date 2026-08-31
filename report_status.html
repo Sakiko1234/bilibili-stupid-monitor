@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <script>var bgs=['bg.jpg','bg2.jpg','bg3.jpg','bg4.jpg'];document.documentElement.style.setProperty('--bg-image','url('+bgs[Math.floor(Math.random()*bgs.length)]+')');</script>
-<title>举报反馈 - B站评论监控</title>
+<title>举报追踪 · 社区评论观察台</title>
 <style>
   :root {
     --bili-pink: #fb7299; --bili-blue: #00a1d6;
@@ -99,8 +99,9 @@
     .report-content { font-size: 14px; }
   }
 </style>
+<link rel="stylesheet" href="dashboard.css">
 </head>
-<body>
+<body class="page-reports">
 <div class="topbar">
   <div class="logo">🚩 举报反馈</div>
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
@@ -113,7 +114,7 @@
   <div>已删除 <b>4220</b> 条</div>
   <div>未删除 <b>1077</b> 条</div>
   <div>处理中 <b>0</b> 条</div>
-  <div>更新于 <b>09-01 01:00</b></div>
+  <div>更新于 <b>09-01 01:05</b></div>
 </div>
 <div class="toolbar">
   <div style="display:flex;align-items:center;gap:10px;">
@@ -254,6 +255,6 @@ function goPage(p) {
 
 render();
 </script>
-<!-- rendered at 2026-09-01 01:00:04 -->
+<!-- rendered at 2026-09-01 01:05:05 -->
 </body>
 </html>

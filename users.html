@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <script>var bgs=['bg.jpg','bg2.jpg','bg3.jpg','bg4.jpg'];document.documentElement.style.setProperty('--bg-image','url('+bgs[Math.floor(Math.random()*bgs.length)]+')');</script>
-<title>弱智名人堂</title>
+<title>用户画像 · 社区评论观察台</title>
 <style>
   :root {
     --bili-pink: #fb7299; --bili-blue: #00a1d6;
@@ -107,8 +107,9 @@
     footer { padding: 20px 0 12px; font-size: 11px; }
   }
 </style>
+<link rel="stylesheet" href="dashboard.css">
 </head>
-<body>
+<body class="page-users">
 <div class="topbar">
   <div class="logo">👤 弱智名人堂</div>
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
@@ -117,6 +118,7 @@
 <div class="nav">
   <a href="./">← 评论列表</a>
   <a href="users.html" class="active">🏆 名人堂</a>
+  <a href="report_status.html">举报反馈</a>
 </div>
 <h1>🏆 弱智名人堂</h1>
 <div class="stats">
@@ -241,4 +243,4 @@ render();
 </script>
 </body>
 </html>
-<!-- rendered at 2026-09-01 01:00:03 -->
+<!-- rendered at 2026-09-01 01:05:04 -->
