@@ -146,7 +146,7 @@ def build():
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 </div>
 <div class="main">
-<div class="nav"><a href="./">评论</a><a href="users.html">名人堂</a><a href="report_status.html" class="active">举报反馈</a></div>
+<div class="nav"><a href="./">评论</a><a href="users.html">名人堂</a></div>
 <h1>举报处理状态 <span>B站举报API反馈</span></h1>
 <div class="stats">
   <div>总举报 <b>{total}</b> 条</div>

@@ -485,7 +485,7 @@ HTML = """<!DOCTYPE html>
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 </div>
 <div class="main">
-<div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a><a href="report_status.html">举报反馈</a></div>
+<div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a></div>
 <h1><span>AI 自动识别 · 实时更新</span></h1>
 <div class="video-tabs" id="videoTabs">
 {video_tabs}
@@ -803,7 +803,7 @@ footer{{text-align:center;padding:24px;color:#8b8b9e;font-size:11px}}
   <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 </div>
 <div class="main">
-<div class="nav"><a href="./">评论</a><a href="users.html">名人堂</a><a href="report_status.html" class="active">举报反馈</a></div>
+<div class="nav"><a href="./">评论</a><a href="users.html">名人堂</a></div>
 <h1>举报处理状态 <span>B站举报API反馈</span></h1>
 <div class="vid-tabs">
   <button class="vid-tab active" onclick="filterVid(event,'all')">all</button>
@@ -1353,7 +1353,6 @@ USERS_PAGE = """<!DOCTYPE html>
 <div class="nav">
   <a href="./">← 评论列表</a>
   <a href="users.html" class="active">🏆 名人堂</a>
-  <a href="report_status.html">举报反馈</a>
 </div>
 <h1>🏆 弱智名人堂</h1>
 <div class="stats">
