@@ -13,7 +13,23 @@ try:
 except Exception:
     bvid2aid = None
 
-BVIDS = ["BV1WQjuz4EzZ", "BV1LKE86xEK1"]
+BVIDS = ["BV1WQjuz4EzZ", "BV1LKE86xEK1", "BV1cB5T6hEr4"]
+VIDEO_LABELS = {
+    "BV1WQjuz4EzZ": "视频1",
+    "BV1LKE86xEK1": "视频2",
+    "BV1cB5T6hEr4": "备用三",
+}
+
+
+def _video_tabs_html():
+    buttons = ['  <button class="vid-tab active" data-bvid="all" onclick="filterVideo(event, \'all\')">全部</button>']
+    for index, bvid in enumerate(BVIDS, 1):
+        label = VIDEO_LABELS.get(bvid, f"视频{index}")
+        buttons.append(
+            f'  <button class="vid-tab" data-bvid="{bvid}" onclick="filterVideo(event, \'{bvid}\')">{label}</button>'
+        )
+    return "\n".join(buttons)
+
 # 预计算 aid，避免每次调 API 都转换
 
 def _build_aid_map():
@@ -472,9 +488,7 @@ HTML = """<!DOCTYPE html>
 <div class="nav"><a href="./" class="active">评论</a><a href="users.html">名人堂</a><a href="report_status.html">举报反馈</a></div>
 <h1><span>AI 自动识别 · 实时更新</span></h1>
 <div class="video-tabs" id="videoTabs">
-  <button class="vid-tab active" data-bvid="all" onclick="filterVideo(event, 'all')">全部</button>
-  <button class="vid-tab" data-bvid="BV1WQjuz4EzZ" onclick="filterVideo(event, 'BV1WQjuz4EzZ')">视频1</button>
-  <button class="vid-tab" data-bvid="BV1LKE86xEK1" onclick="filterVideo(event, 'BV1LKE86xEK1')">视频2</button>
+{video_tabs}
 </div>
 <div class="stats">
   <div>累计标记 <b id="totalCount">{total}</b> 条</div>
@@ -795,6 +809,7 @@ footer{{text-align:center;padding:24px;color:#8b8b9e;font-size:11px}}
   <button class="vid-tab active" onclick="filterVid(event,'all')">all</button>
   <button class="vid-tab" onclick="filterVid(event,'114568202297147')">BV1WQ</button>
   <button class="vid-tab" onclick="filterVid(event,'116710300458711')">BV1LK</button>
+  <button class="vid-tab" onclick="filterVid(event,'116560983230581')">备用三</button>
 </div>
 <div class="stats" id="stats">
   <div>total <b>{len(tracking)}</b></div>
@@ -1590,6 +1605,7 @@ def build_html(data):
         placeholder=placeholder,
         summary_html=summary_html,
         ranking_html=ranking_html,
+        video_tabs=_video_tabs_html(),
         all_comments_json=json.dumps(comments_clean, ensure_ascii=False),
     )
 
