@@ -523,7 +523,9 @@ let currentPage = 1;
 let currentKeyword = '';
 function getSorted() {{
   let list = [...ALL_COMMENTS];
-  list.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  list.sort((a, b) =>
+    (a.detected_at || a.time || '').localeCompare(b.detected_at || b.time || '')
+  );
   if (currentSort === 'newest') list.reverse();
   return list;
 }}
@@ -546,6 +548,7 @@ function getFiltered() {{
   return filtered.filter(c =>
     (c.user || '').toLowerCase().includes(kw) ||
     (c.content || '').toLowerCase().includes(kw) ||
+    String(c.rpid || '').includes(currentKeyword) ||
     (c.ai_reason || '').toLowerCase().includes(kw)
   );
 }}
@@ -1559,6 +1562,8 @@ def build_html(data):
             "mid": c.get("mid", ""),
             "avatar": avatar,
             "time": c.get("time", "?"),
+            "detected_at": c.get("detected_at", ""),
+            "rpid": c.get("rpid", ""),
             "like": c.get("like", 0),
             "content": c.get("content", ""),
             "level": c.get("level", 0),
