@@ -2,7 +2,7 @@
 ECS Cron 自动监测脚本
 每5分钟拉取 B站评论 → DeepSeek AI判定 → 生成 HTML → 自动发布
 """
-import asyncio, json, os, time, sys, urllib.parse
+import asyncio, json, os, time, sys, urllib.parse, tempfile
 from datetime import datetime, timezone, timedelta
 CST = timezone(timedelta(hours=8))  # 中国时区
 import requests
@@ -648,11 +648,27 @@ def fetch_missing_avatars(mids):
             pass
         # 不放 sleep，B站头像 API 限流不严
 
-    os.makedirs(os.path.dirname(AVATAR_FILE), exist_ok=True)
-    with open(AVATAR_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False)
+    _save_json_atomic(AVATAR_FILE, cache)
 
     return cache
+
+def _save_json_atomic(path, data, *, ensure_ascii=False, indent=None):
+    """Serialize to a temporary file, then replace the destination atomically."""
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.", dir=parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=ensure_ascii, indent=indent)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -661,9 +677,7 @@ def load_data():
     return {"videos": {}, "comments": []}
 
 def save_data(data):
-    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _save_json_atomic(DATA_FILE, data, indent=2)
 
 def load_checked():
     """加载已检查的评论 ID（独立文件，不提交到 git）"""
@@ -673,9 +687,7 @@ def load_checked():
     return {}
 
 def save_checked(data):
-    os.makedirs(os.path.dirname(CHECKED_FILE), exist_ok=True)
-    with open(CHECKED_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    _save_json_atomic(CHECKED_FILE, data)
 
 def load_reported():
     if os.path.exists(REPORTED_FILE):
@@ -687,9 +699,7 @@ def load_reported():
     return set()
 
 def save_reported(data):
-    os.makedirs(os.path.dirname(REPORTED_FILE), exist_ok=True)
-    with open(REPORTED_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(data), f)
+    _save_json_atomic(REPORTED_FILE, list(data))
 
 def load_report_tracking():
     if os.path.exists(REPORT_TRACKING_FILE):
@@ -707,14 +717,10 @@ def load_failed_reports():
     return []
 
 def save_failed_reports(data):
-    os.makedirs(os.path.dirname(FAILED_REPORT_FILE), exist_ok=True)
-    with open(FAILED_REPORT_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _save_json_atomic(FAILED_REPORT_FILE, data, indent=2)
 
 def save_report_tracking(data):
-    os.makedirs(os.path.dirname(REPORT_TRACKING_FILE), exist_ok=True)
-    with open(REPORT_TRACKING_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _save_json_atomic(REPORT_TRACKING_FILE, data, indent=2)
 
 def check_report_results():
     tracking = load_report_tracking()

@@ -2,7 +2,7 @@
 Pipeline: 从新到旧遍历评论 → AI分析 → 自动举报
 每轮拉取 20 页（cursor 推进），举报间隔 120s，-352 静默 300s
 """
-import json, os, time, sys, random, re
+import json, os, time, sys, random, re, tempfile
 from datetime import datetime, timezone, timedelta
 CST = timezone(timedelta(hours=8))
 
@@ -83,9 +83,21 @@ def load_json(path, default):
     return default
 
 def save_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.", dir=parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 def load_flagged():
     return load_json(DATA_FILE, {"videos": {}, "comments": []})
@@ -227,7 +239,7 @@ def _call_ai(model, system_prompt, user_text, max_tokens=400):
 
 def check_comment(text):
     try:
-        answer = _call_ai("deepseek-v4-flash", AI_PROMPT, text, max_tokens=400)
+        answer = _call_ai("deepseek-flash", AI_PROMPT, text, max_tokens=400)
         report_content = None
         if "|" in answer:
             parts = answer.split("|", 1)
@@ -245,7 +257,7 @@ def check_comment(text):
         if any(t in text for t in HARD_RULE_TERMS):
             return True, "硬规则", report_content
 
-        review = _call_ai("deepseek-v4-flash", AI_REVIEW_PROMPT, text, max_tokens=200)
+        review = _call_ai("deepseek-flash", AI_REVIEW_PROMPT, text, max_tokens=200)
         if review.startswith("是"):
             return False, "复审驳回", None
         else:
