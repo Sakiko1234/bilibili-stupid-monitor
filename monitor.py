@@ -90,10 +90,7 @@ def _load_cookie_state():
     return {"idx": 0}
 
 def _save_cookie_state():
-    import json
-    os.makedirs(os.path.dirname(_COOKIE_STATE_FILE), exist_ok=True)
-    with open(_COOKIE_STATE_FILE, "w") as f:
-        json.dump({"idx": _COOKIE_INDEX}, f)
+    _save_json_atomic(_COOKIE_STATE_FILE, {"idx": _COOKIE_INDEX})
 
 _cs = _load_cookie_state()
 _COOKIE_INDEX = _cs.get("idx", 0) % len(_COOKIE_POOL) if _COOKIE_POOL else 0
