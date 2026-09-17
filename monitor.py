@@ -1209,7 +1209,7 @@ def check_comment(text, pictures=None):
 
     try:
         # 第一判：v4-flash 高召回
-        answer = _call_ai("deepseek-v4-flash", AI_PROMPT, text, max_tokens=400)
+        answer = _call_ai("deepseek-flash", AI_PROMPT, text, max_tokens=400)
         # 解析「是|理由」或「否」
         report_content = None
         if "|" in answer:
