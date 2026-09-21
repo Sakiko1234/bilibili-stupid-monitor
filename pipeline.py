@@ -526,11 +526,21 @@ def report_batch(flagged_list, state):
     """举报一批标记评论，返回(成功数, -352是否触发)"""
     queue = state.get("queue", [])
     reported = load_reported()
+    reported_keys = {str(value) for value in reported}
+
+    # 丢弃已经处理过的持久化队列项，否则主循环会反复拿同一批
+    # 已上报评论重试，导致 pipeline 永不退出并长期占用全局锁。
+    queue_before = len(queue)
+    queue = [item for item in queue if str(item.get("rpid")) not in reported_keys]
+    flagged_list = [item for item in flagged_list if str(item.get("rpid")) not in reported_keys]
+    if queue_before != len(queue):
+        print(f"  [queue] dropped {queue_before - len(queue)} already-reported items")
+
     ok_count = 0
     hit_352 = False
 
     for c in flagged_list:
-        if c["rpid"] in reported:
+        if str(c.get("rpid")) in reported_keys:
             continue
         reason_text = c.get("report_content") or "引战拉踩攻击米家其他游戏"
         if len(reason_text) < 2:
@@ -539,6 +549,7 @@ def report_batch(flagged_list, state):
         code = do_report(c["rpid"], reason_text)
         if code == 0:
             reported.add(c["rpid"])
+            reported_keys.add(str(c["rpid"]))
             ok_count += 1
             print(f"  [report] OK rpid={c['rpid']} user={c['user']}")
             tracking = load_tracking()
@@ -568,7 +579,7 @@ def report_batch(flagged_list, state):
 
     # 未上报成功的推入队列
     for c in reversed(flagged_list):
-        if c["rpid"] in reported:
+        if str(c.get("rpid")) in reported_keys:
             break
         if not any(x.get("rpid") == c["rpid"] for x in queue):
             queue.append(c)
