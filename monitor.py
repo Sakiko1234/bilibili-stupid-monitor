@@ -1208,7 +1208,7 @@ def check_comment(text, pictures=None):
         return _analyze_image_comment(text, pictures)
 
     try:
-        # 第一判：v4-flash 高召回
+        # 第一判：Flash 高召回
         answer = _call_ai("deepseek-flash", AI_PROMPT, text, max_tokens=400)
         # 解析「是|理由」或「否」
         report_content = None
@@ -1229,8 +1229,8 @@ def check_comment(text, pictures=None):
         HARD_RULE_TERMS = ['txg', '铁孝子', '原批', '铁÷', '原婴', '绝批', '你游玩家就这']
         if any(t in text for t in HARD_RULE_TERMS):
             return True, "硬规则", report_content
-        # 第二判：v4-flash 判断是否误判（「是」=误判驳回，「否」=维持）
-        review = _call_ai("deepseek-v4-pro", AI_REVIEW_PROMPT, text, max_tokens=200)
+        # 第二判：Flash 判断是否误判（「是」=误判驳回，「否」=维持）
+        review = _call_ai("deepseek-flash", AI_REVIEW_PROMPT, text, max_tokens=200)
         if review in ('是',) or review.startswith("是"):
             return False, "复审驳回", None
         else:
